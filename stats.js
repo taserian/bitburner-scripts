@@ -2,6 +2,7 @@ import { formatNumberShort, formatMoney, getNsDataThroughFile, getActiveSourceFi
 
 const argsSchema = [
     ['hide-stocks', false],
+    ['show-peoplekilled', false],
 ];
 
 export function autocomplete(data, args) {
@@ -55,18 +56,33 @@ export async function main(ns) {
             headers.push("ScrExp");
             values.push(formatNumberShort(ns.getScriptExpGain(), 3, 2) + '/sec');
 
+            let gangInfo = false;
             if (2 in dictSourceFiles) { // Gang income is only relevant once gangs are unlocked
-                const gangInfo = await getNsDataThroughFile(ns, 'ns.gang.inGang() ? ns.gang.getGangInformation() : false', '/Temp/gang-stats.txt');
+                gangInfo = await getNsDataThroughFile(ns, 'ns.gang.inGang() ? ns.gang.getGangInformation() : false', '/Temp/gang-stats.txt');
                 if (gangInfo !== false) {
+                    // Add Gang Income
                     headers.push("Gang");
                     values.push(formatMoney(gangInfo.moneyGainRate * 5, 3, 2) + '/sec');
+                    // Add Gang Territory
+                    headers.push("Territory");
+                    values.push(formatNumberShort(gangInfo.territory * 100, 4, 2) + "%");
                 }
             }
 
             const karma = ns.heart.break();
-            if (karma <= -9) {
+            if (karma <= -9 // Don't spoiler Karma if they haven't started doing crime yet
+                && !gangInfo) { // If in a gang, you know you have oodles of bad Karma. Save some space
                 headers.push("Karma");
                 values.push(formatNumberShort(karma, 3, 2));
+            }
+
+            if(options['show-peoplekilled']) {
+                playerInfo = (await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt'));
+                const numPeopleKilled = playerInfo.numPeopleKilled;
+                if (numPeopleKilled > 0) {
+                    headers.push("Ppl Killed");
+                    values.push(formatNumberShort(numPeopleKilled, 6, 0));
+                }
             }
 
             const sharePower = ns.getSharePower();

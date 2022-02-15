@@ -252,7 +252,7 @@ export async function main(ns) {
         },
         { interval: 51000, name: "/Tasks/contractor.js", requiredServer: "home" },
         { interval: 110000, name: "/Tasks/backdoor-all-servers.js", requiredServer: "home", shouldRun: () => 4 in dictSourceFiles },
-        { interval: 111000, name: "host-manager.js", requiredServer: "home", shouldRun: () => !shouldReserveMoney() && shouldImproveHacking() },
+        { interval: 111000, name: "host-manager.js", requiredServer: "home", shouldRun: () => !shouldReserveMoney() && shouldImproveHacking(), args: () => ["--reserve-by-time"] },
     ];
     periodicScripts.forEach(tool => tool.name = getFilePath(tool.name));
     hackTools = [
@@ -317,6 +317,9 @@ async function runPeriodicScripts(ns) {
     }
 }
 
+// Helper that gets the either invokes a function that returns a value, or returns the value as-is if it is not a function.
+const funcResultOrValue = fnOrVal => (fnOrVal instanceof Function ? fnOrVal() : fnOrVal);
+
 // Returns true if the tool is running (including if it was already running), false if it could not be run.
 /** @param {NS} ns **/
 async function tryRunTool(ns, tool) {
@@ -329,7 +332,7 @@ async function tryRunTool(ns, tool) {
         if (verbose) log(`INFO: Tool ${tool.name} is already running on server ${runningOnServer}.`);
         return true;
     }
-    const args = tool.args ? (tool.args instanceof Function ? tool.args() : tool.args) : []; // Support either a static args array, or a function returning the args.
+    const args = funcResultOrValue(tool.args) || []; // Support either a static args array, or a function returning the args.
     const runResult = await arbitraryExecution(ns, tool, 1, args, tool.requiredServer || "home"); // TODO: Allow actually requiring a server
     if (runResult) {
         runningOnServer = whichServerIsRunning(ns, tool.name, false);
@@ -547,6 +550,7 @@ async function doTargetingLoop(ns) {
                 !options['no-share'] && (options['share'] || network.totalMaxRam > 1024)) { // If not explicitly enabled or disabled, auto-enable share at 1TB of network RAM
                 let shareTool = getTool("share");
                 let maxThreads = shareTool.getMaxThreads(); // This many threads would use up 100% of the (1-utilizationPercent)% RAM remaining
+                if (xpOnly) maxThreads -= Math.floor(getServerByName('home').ramAvailable() / shareTool.cost); // Reserve home ram entirely for XP cycles when in xpOnly mode
                 network = getNetworkStats(); // Update network stats since they may have changed after scheduling xp cycles above
                 utilizationPercent = network.totalUsedRam / network.totalMaxRam;
                 let shareThreads = Math.floor(maxThreads * (maxShareUtilization - utilizationPercent) / (1 - utilizationPercent)); // Ensure we don't take utilization above (1-maxShareUtilization)%
@@ -1587,7 +1591,7 @@ async function buildToolkit(ns) {
     }
 }
 
-const hashToolDefinition = s => hashCode(s.name + JSON.stringify(s.args || []));
+const hashToolDefinition = s => hashCode(s.name + (s.args?.toString() || ''));
 
 function getTool(s) { return toolsByShortName[s] || toolsByShortName[s.shortName || hashToolDefinition(s)]; }
 
